@@ -1,37 +1,50 @@
 import torch
-from torchvision import transforms
-from PIL import Image
 import argparse
-import segmentation_models_pytorch as smp
-transform = transforms.Compose([
-    transforms.Resize((256, 256)),
-    transforms.ToTensor(),
-])
-def load_model(checkpoint_path):
-    model = smp.UnetPlusPlus(
+from torchvision import transforms
+from segmentation_models_pytorch import UnetPlusPlus
+import cv2
+import numpy as np
+
+color_dict = {
+    0: (0, 0, 0),
+    1: (0, 0, 255),
+    2: (0, 255, 0)
+}
+
+def predict(model, image_path, output_path):
+    image = cv2.imread(image_path)
+    image = cv2.resize(image, (256, 256))
+    if image.shape[-1] == 3 and image[:, :, 0].all() == image[:, :, 2].all():
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)  # Convert BGR to RGB
+    preprocess = transforms.Compose([
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+    ])
+    image = preprocess(image).unsqueeze(0).to(device)
+    with torch.no_grad():
+        prediction = model(image)
+    prediction = torch.argmax(prediction, dim=1).squeeze(0).cpu().numpy()
+    colored_mask = np.zeros((prediction.shape[0], prediction.shape[1], 3), dtype=np.uint8)
+    for class_id, color in color_dict.items():
+        colored_mask[prediction == class_id] = color
+    cv2.imwrite(output_path, colored_mask)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='Inference script for image segmentation')
+    parser.add_argument('--image_path', type=str, required=True, help='Path to input image')
+    parser.add_argument('--output_path', type=str, default='output.png', help='Path to save the output image')
+    args = parser.parse_args()
+    model = UnetPlusPlus(
         encoder_name="resnet34",
         encoder_weights="imagenet",
         in_channels=3,
         classes=3
     )
-    checkpoint = torch.load(checkpoint_path, map_location=torch.device('cpu'))
-    model.load_state_dict(checkpoint)
+    checkpoint = torch.load('model.pth', map_location=torch.device('cpu'))
+    model.load_state_dict(checkpoint['model'])
+    device = torch.device('cuda' if torch.cuda.is_available() else "cpu")
+    model.to(device)
     model.eval()
-    return model
-def predict(model, image_path):
-    image = Image.open(image_path)
-    image = transform(image).unsqueeze(0)
-    with torch.no_grad():
-        output = model(image)
-    return output
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Inference script for image segmentation')
-    parser.add_argument('--image_path', type=str, help='Path to input image', required=True)
-    args = parser.parse_args()
-    model = load_model('model.pth')
-    output = predict(model, args.image_path)
-    output_image = transforms.ToPILImage()(output.squeeze(0))
-    output_image.save('output_segmented_image.png')
-    print("Segmented image saved as output_segmented_image.png")
-
-
+    predict(model, args.image_path, args.output_path)
+    print(f"Segmented image saved as: {args.output_path}")
