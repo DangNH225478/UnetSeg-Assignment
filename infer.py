@@ -9,8 +9,8 @@ transform = transforms.Compose([
 ])
 def load_model(checkpoint_path):
     model = smp.UnetPlusPlus(
-        encoder_name="timm-efficientnet-b8",
-        encoder_weights="advprop",
+        encoder_name="resnet34",
+        encoder_weights="imagenet",
         in_channels=3,
         classes=3
     )
