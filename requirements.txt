@@ -1,6 +1,6 @@
 torch
 torchvision
-timm
-segmentation-models-pytorch
-Pillow
+segmentation_models_pytorch
 opencv-python
+numpy
+argparse
